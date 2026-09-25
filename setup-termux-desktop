@@ -1725,6 +1725,55 @@ function setup_device_gpu_model() {
 # distro hardware accelrration related questions
 # NOTE: when the termux side selection already decides what the distro should
 # use then it get derived here, it doesn't ask the same thing again
+function setup_xclipse_preset() {
+	if [[ "$GPU_NAME" != "xclipse" ]]; then
+		return 0
+	fi
+
+	while true; do
+		banner
+		print_msg "${BOLD}Xclipse preset for Custom installation${NC}"
+		echo
+		print_msg "Xclipse is not supported by all Mesa/VirGL combinations."
+		echo
+		echo "${Y}1. Recommended: Android Vulkan Wrapper + VirGL${NC}"
+		echo
+		echo "${Y}2. Experimental: Android Vulkan Wrapper + VirGL + ANGLE${NC}"
+		echo
+		echo "${Y}3. Software fallback: no GPU acceleration${NC}"
+		echo
+		read -r -p "${Y} Enter your choice [1-3]: ${NC}" xclipse_preset
+
+		case "$xclipse_preset" in
+			1)
+				exp_termux_vulkan_hw_answer="vulkan_wrapper_android"
+				termux_hw_answer="virgl"
+				pd_hw_answer="virgl"
+				print_success "Selected the recommended Xclipse preset"
+				return 0
+				;;
+			2)
+				exp_termux_vulkan_hw_answer="vulkan_wrapper_android"
+				termux_hw_answer="virgl_angle"
+				pd_hw_answer="virgl"
+				print_warn "Selected the experimental VirGL + ANGLE preset"
+				return 0
+				;;
+			3)
+				enable_hw_acc="n"
+				exp_termux_vulkan_hw_answer=""
+				termux_hw_answer=""
+				pd_hw_answer=""
+				print_success "Selected the software fallback"
+				return 0
+				;;
+			*)
+				print_warn "Invalid input, please enter 1, 2, or 3"
+				;;
+		esac
+	done
+}
+
 function distro_hw_questions() {
 	if [[ "$distro_add_answer" != "y" ]]; then
 		return 0
@@ -2442,7 +2491,7 @@ ${NC}"
 		elif [[ "$GPU_NAME" == "mali" ]]; then
 			if [[ $device_brand_name == samsung* ]]; then
 				if ! download_file "$REPO_RAW_URL/refs/heads/$REPO_BRANCH_MAIN/configuration/generic/hwa/mali/samsung/generic-samsung-mali.conf"; then
-					print_failed "Failed to download Mali configuration"
+					print_failed "Failed to download Samsung Mali configuration"
 					print_msg "Please check your internet connection"
 					exit 1
 				fi
@@ -2459,6 +2508,16 @@ ${NC}"
 				source generic-mali.conf
 				check_and_delete "generic-mali.conf"
 			fi
+		elif [[ "$GPU_NAME" == "xclipse" ]]; then
+			if ! download_file "$REPO_RAW_URL/refs/heads/$REPO_BRANCH_MAIN/configuration/generic/hwa/xclipse/generic-xclipse.conf"; then
+				print_failed "Failed to download Xclipse configuration"
+				print_msg "Please check your internet connection"
+				exit 1
+			fi
+			# shellcheck disable=SC1091
+			source generic-xclipse.conf
+			check_and_delete "generic-xclipse.conf"
+			print_warn "Xclipse acceleration is experimental; if it fails, use tx11stop -f and tx11start --nogpu"
 		else
 			if ! download_file "$REPO_RAW_URL/refs/heads/$REPO_BRANCH_MAIN/configuration/generic/hwa/generic-others.conf"; then
 				print_failed "Failed to download Others configuration"
@@ -2608,16 +2667,22 @@ function get_termux_arch() {
 }
 
 function try_to_autodetect_gpu() {
+	local gpu_board_platform
 	local gpu_egl
+	local gpu_hardware
+	local gpu_soc_model
 	local gpu_vulkan
+	gpu_board_platform=$(getprop ro.board.platform)
 	gpu_egl=$(getprop ro.hardware.egl)
+	gpu_hardware=$(getprop ro.hardware)
+	gpu_soc_model=$(getprop ro.soc.model)
 	gpu_vulkan=$(getprop ro.hardware.vulkan)
-	detected_gpu="$(echo -e "$gpu_egl\n$gpu_vulkan" | sort -u | tr '\n' ' ' | sed 's/ $//')"
+	detected_gpu="$(echo -e "$gpu_board_platform\n$gpu_egl\n$gpu_hardware\n$gpu_soc_model\n$gpu_vulkan" | sort -u | tr '\n' ' ' | sed 's/ $//')"
 	if echo "$detected_gpu" | grep -iq "adreno"; then
 		GPU_NAME="adreno"
 	elif echo "$detected_gpu" | grep -iqE "mali|meow"; then
 		GPU_NAME="mali"
-	elif echo "$detected_gpu" | grep -iqE "xclipse|samsung"; then
+	elif echo "$detected_gpu" | grep -iqE "xclipse|s5e8845|s5e8855|exynos[[:space:]_-]*(1480|1580)"; then
 		GPU_NAME="xclipse"
 	else
 		GPU_NAME="unknown"
@@ -4217,6 +4282,7 @@ function setup_tx11stop_cmd() {
 			kill -9 "\$termux_x11_pid" > /dev/null 2>&1
 			pkill -9 pulseaudio > /dev/null 2>&1
 			killall virgl_test_server > /dev/null 2>&1
+			killall virgl_test_server_android > /dev/null 2>&1
 			pkill -9 openbox* > /dev/null 2>&1
 			pkill -9 dbus-* > /dev/null 2>&1
 			pkill -f com.termux.x11 > /dev/null 2>&1
@@ -4229,6 +4295,7 @@ function setup_tx11stop_cmd() {
 			pkill -f com.termux.x11 > /dev/null 2>&1
 			pkill -9 openbox* > /dev/null 2>&1
 			killall virgl_test_server > /dev/null 2>&1
+			killall virgl_test_server_android > /dev/null 2>&1
 			pkill -9 pulseaudio > /dev/null 2>&1
 			pkill -9 dbus-* > /dev/null 2>&1
 			print_msg "${G}Termux:X11 Successfully Force Stopped ${NC}"
@@ -4273,6 +4340,7 @@ function setup_tx11stop_cmd() {
 			kill -9 "\$termux_x11_pid" > /dev/null 2>&1
 			pkill -9 pulseaudio > /dev/null 2>&1
 			killall virgl_test_server > /dev/null 2>&1
+			killall virgl_test_server_android > /dev/null 2>&1
 			pkill -9 $de_name-* > /dev/null 2>&1
 			pkill -9 dbus-* > /dev/null 2>&1
 			pkill -f com.termux.x11 > /dev/null 2>&1
@@ -4284,6 +4352,7 @@ function setup_tx11stop_cmd() {
 			pkill -f com.termux.x11 > /dev/null 2>&1
 			pkill -9 $de_name-* > /dev/null 2>&1
 			killall virgl_test_server > /dev/null 2>&1
+			killall virgl_test_server_android > /dev/null 2>&1
 			pkill -9 pulseaudio > /dev/null 2>&1
 			pkill -9 dbus-* > /dev/null 2>&1
 			print_msg "${G}Termux:X11 Successfully Force Stopped ${NC}"
@@ -6254,7 +6323,14 @@ function install_termux_desktop() {
 
 			if [[ "$enable_hw_acc" == "y" ]]; then
 				setup_device_gpu_model
-				hw_questions
+				if [[ "$GPU_NAME" == "xclipse" ]]; then
+					setup_xclipse_preset
+					if [[ "$enable_hw_acc" == "y" ]]; then
+						distro_hw_questions
+					fi
+				else
+					hw_questions
+				fi
 			fi
 		fi
 	fi

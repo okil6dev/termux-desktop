@@ -46,6 +46,33 @@ This gets asked for every option except `Turnip + Fryzek's KGSL`, which already 
 - The `VirGL` options pass OpenGL through to Android instead. They don't use your Vulkan driver at all, and they are the way out when Zink doesn't work on your device, which happens on a lot of devices with the wrapper drivers. That's why they are still here instead of falling back to llvmpipe.
 - `Skip` installs no OpenGL driver. Only OpenGL falls back to Mesa's software renderer (llvmpipe), Vulkan apps keep using the driver you picked in step 1. Pick this when you only care about Vulkan and don't want a translation layer in the way. It isn't offered when you also skipped Vulkan, because that would leave nothing accelerated at all, use `enable_hw_acc=n` for that.
 
+##### Samsung Xclipse GPUs
+
+Samsung Xclipse support is **experimental and device-dependent**. Xclipse GPUs, such as Xclipse 530 in the Exynos 1480 and Xclipse 540 in the Exynos 1580, do not have a universally supported native Mesa driver. The automatic Xclipse profile therefore uses the Android Vulkan Wrapper with the regular VirGL GPU-passthrough backend, which is less dependent on ANGLE support than the VirGL + ANGLE backend.
+
+If the desktop starts but applications render incorrectly, black-screen, crash, or show no acceleration, stop the session and retry without GPU acceleration:
+
+```bash
+tx11stop -f
+tx11start --nogpu
+```
+
+You can also change the driver interactively with:
+
+```bash
+setup-termux-desktop --change hw
+```
+
+Choose the Android Vulkan Wrapper and test the regular VirGL option first. If the wrapper or VirGL backend is unstable on your tablet, use `--nogpu`; that uses the software renderer but is more reliable than a broken GPU session. GPU acceleration is experimental, so use `glxinfo -B` or your desktop's system information tool to verify the renderer before troubleshooting applications.
+
+For a Custom installation, choose **Xclipse** when the GPU is detected or selected. The installer then shows a dedicated Xclipse preset screen:
+
+- **Recommended:** Android Vulkan Wrapper + regular VirGL
+- **Experimental:** Android Vulkan Wrapper + VirGL + ANGLE
+- **Software fallback:** disables GPU acceleration for the installation
+
+The recommended preset is the first option to try on Xclipse devices. If the session black-screens, crashes, or renders incorrectly, choose the software fallback during installation or use `tx11stop -f` followed by `tx11start --nogpu` after installation.
+
 > [!NOTE]
 > `Skip` is not the same as `--nogpu`. They use the same software renderer for OpenGL, but `--nogpu` turns off Vulkan too, while `Skip` keeps your Vulkan driver working.
 
